@@ -49,4 +49,5 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: h-amikura/go-ci-demo:latest
+          tags: amikura0523/go-ci-demo:latest
+
