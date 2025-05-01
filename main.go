@@ -1,7 +1,8 @@
 package main
 
 import "fmt"
-// これはテスト用の変更です
+
+// Hello returns a greeting message.
 func Hello() string {
 	return "Hello, CI!"
 }
