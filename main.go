@@ -7,8 +7,12 @@ import (
 	"os"
 )
 
+// ここに Hello() を定義
+func Hello() string {
+	return "Hello, CI!"
+}
+
 func main() {
-	// Azure App Service から渡されるポート番号を取得（なければ80）
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "80"
