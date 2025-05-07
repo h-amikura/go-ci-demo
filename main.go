@@ -72,3 +72,7 @@ func main() {
 		log.Fatalf("サーバー起動に失敗: %v", err)
 	}
 }
+// Hello関数（テスト用）
+func Hello() string {
+	return "Hello, CI!"
+}
