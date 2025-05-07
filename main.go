@@ -12,10 +12,6 @@ import (
 
 var dbStatus = "❌ DB接続に失敗しました"
 
-func Hello() string {
-	return "Hello, CI!"
-}
-
 func connectToDB() *sql.DB {
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
@@ -58,8 +54,18 @@ func main() {
 	log.Printf(">>> ポート%sでサーバーを起動します...\n", port)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		msg := fmt.Sprintf("Goアプリがポート%sで起動中です！\n%s", port, dbStatus)
-		fmt.Fprintln(w, msg)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		html := fmt.Sprintf(`
+			<!DOCTYPE html>
+			<html lang="ja">
+			<head><meta charset="UTF-8"><title>Goサーバー</title></head>
+			<body>
+				<h1>Goアプリがポート%sで起動中です！</h1>
+				<p><strong>DB接続状態:</strong> %s</p>
+			</body>
+			</html>
+		`, port, dbStatus)
+		fmt.Fprint(w, html)
 	})
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
