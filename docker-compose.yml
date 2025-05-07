@@ -9,4 +9,20 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=secret
+      - DB_NAME=myapp
+    depends_on:
+      - db
 
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: myapp
+    ports:
+      - "5432:5432"
