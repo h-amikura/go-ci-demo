@@ -62,9 +62,36 @@ func main() {
 			<body>
 				<h1>Goアプリがポート%sで起動中です！</h1>
 				<p><strong>DB接続状態:</strong> %s</p>
+				<p><a href="/env">▶ 環境変数を確認する</a></p>
 			</body>
 			</html>
 		`, port, dbStatus)
+		fmt.Fprint(w, html)
+	})
+
+	http.HandleFunc("/env", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		html := `
+			<!DOCTYPE html>
+			<html lang="ja">
+			<head><meta charset="UTF-8"><title>環境変数一覧</title></head>
+			<body>
+				<h1>環境変数の確認</h1>
+				<table border="1" cellpadding="5" cellspacing="0">
+					<tr><th>変数名</th><th>値</th></tr>
+		`
+
+		keys := []string{"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "PORT"}
+		for _, key := range keys {
+			val := os.Getenv(key)
+			html += fmt.Sprintf("<tr><td>%s</td><td>%s</td></tr>", key, val)
+		}
+
+		html += `
+				</table>
+			</body>
+			</html>
+		`
 		fmt.Fprint(w, html)
 	})
 
