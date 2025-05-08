@@ -11,6 +11,7 @@ import (
 )
 
 var dbStatus = "❌ DB接続に失敗しました"
+var dbEnvVars = make(map[string]string) // ← ここにconnectToDBで読み取った環境変数を保存
 
 func connectToDB() *sql.DB {
 	host := os.Getenv("DB_HOST")
@@ -18,6 +19,13 @@ func connectToDB() *sql.DB {
 	user := os.Getenv("DB_USER")
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
+
+	// connectToDBで読み取った環境変数を保存
+	dbEnvVars["DB_HOST"] = host
+	dbEnvVars["DB_PORT"] = port
+	dbEnvVars["DB_USER"] = user
+	dbEnvVars["DB_PASSWORD"] = password
+	dbEnvVars["DB_NAME"] = dbname
 
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
@@ -71,24 +79,24 @@ func main() {
 
 	http.HandleFunc("/env", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 		html := `
 			<!DOCTYPE html>
 			<html lang="ja">
-			<head><meta charset="UTF-8"><title>環境変数一覧</title></head>
+			<head><meta charset="UTF-8"><title>接続用環境変数</title></head>
 			<body>
-				<h1>環境変数の確認</h1>
-				<table border="1" cellpadding="5" cellspacing="0">
+				<h1>connectToDB() で使用された環境変数</h1>
+				<table border="1" cellpadding="6" cellspacing="0">
 					<tr><th>変数名</th><th>値</th></tr>
 		`
 
-		keys := []string{"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "PORT"}
-		for _, key := range keys {
-			val := os.Getenv(key)
+		for key, val := range dbEnvVars {
 			html += fmt.Sprintf("<tr><td>%s</td><td>%s</td></tr>", key, val)
 		}
 
 		html += `
 				</table>
+				<p><a href="/">← トップに戻る</a></p>
 			</body>
 			</html>
 		`
