@@ -10,8 +10,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var dbStatus = "❌ DB接続に失敗しました"
-var dbEnvVars = make(map[string]string) // ← ここにconnectToDBで読み取った環境変数を保存
+var (
+	dbStatus   = "❌ DB接続に失敗しました"
+	envDetails = "" // HTML出力用
+)
 
 func connectToDB() *sql.DB {
 	host := os.Getenv("DB_HOST")
@@ -20,26 +22,31 @@ func connectToDB() *sql.DB {
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
 
-	// connectToDBで読み取った環境変数を保存
-	dbEnvVars["DB_HOST"] = host
-	dbEnvVars["DB_PORT"] = port
-	dbEnvVars["DB_USER"] = user
-	dbEnvVars["DB_PASSWORD"] = password
-	dbEnvVars["DB_NAME"] = dbname
+	// 環境変数の表示
+	envDetails = fmt.Sprintf(`
+		<tr><td>DB_HOST</td><td>%s</td></tr>
+		<tr><td>DB_PORT</td><td>%s</td></tr>
+		<tr><td>DB_USER</td><td>%s</td></tr>
+		<tr><td>DB_PASSWORD</td><td>%s</td></tr>
+		<tr><td>DB_NAME</td><td>%s</td></tr>`,
+		host, port, user, password, dbname,
+	)
 
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		host, port, user, password, dbname,
 	)
 
+	log.Printf("🔍 DSN: %s", dsn)
+
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		log.Printf("❌ DB接続失敗: %v", err)
+		log.Printf("❌ sql.Open 失敗: %v", err)
 		return nil
 	}
 
 	if err := db.Ping(); err != nil {
-		log.Printf("❌ DB疎通エラー: %v", err)
+		log.Printf("❌ db.Ping 失敗: %v", err)
 		return nil
 	}
 
@@ -63,44 +70,33 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		html := fmt.Sprintf(`
-			<!DOCTYPE html>
-			<html lang="ja">
-			<head><meta charset="UTF-8"><title>Goサーバー</title></head>
-			<body>
-				<h1>Goアプリがポート%sで起動中です！</h1>
-				<p><strong>DB接続状態:</strong> %s</p>
-				<p><a href="/env">▶ 環境変数を確認する</a></p>
-			</body>
-			</html>
-		`, port, dbStatus)
+		html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>Goサーバー</title></head>
+<body>
+	<h1>Goアプリがポート%sで起動中です！</h1>
+	<p><strong>DB接続状態:</strong> %s</p>
+	<p><a href="/env">▶ 環境変数を確認する</a></p>
+</body>
+</html>`, port, dbStatus)
 		fmt.Fprint(w, html)
 	})
 
 	http.HandleFunc("/env", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-		html := `
-			<!DOCTYPE html>
-			<html lang="ja">
-			<head><meta charset="UTF-8"><title>接続用環境変数</title></head>
-			<body>
-				<h1>connectToDB() で使用された環境変数</h1>
-				<table border="1" cellpadding="6" cellspacing="0">
-					<tr><th>変数名</th><th>値</th></tr>
-		`
-
-		for key, val := range dbEnvVars {
-			html += fmt.Sprintf("<tr><td>%s</td><td>%s</td></tr>", key, val)
-		}
-
-		html += `
-				</table>
-				<p><a href="/">← トップに戻る</a></p>
-			</body>
-			</html>
-		`
-		fmt.Fprint(w, html)
+		envHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>環境変数の確認</title></head>
+<body>
+	<h1>connectToDB() で使用された環境変数</h1>
+	<table border="1" cellpadding="5">
+		<tr><th>変数名</th><th>値</th></tr>
+		%s
+	</table>
+	<p><a href="/">← トップに戻る</a></p>
+</body>
+</html>`, envDetails)
+		fmt.Fprint(w, envHTML)
 	})
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
