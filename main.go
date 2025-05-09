@@ -109,6 +109,7 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	<h1>Goアプリがポート%sで起動中です！</h1>
 	<p><strong>DB接続状態:</strong> %s</p>
 	<p><a href="/env">▶ 環境変数を確認する</a></p>
+	<p style="color: gray;">🔧 HTML修正テスト：この行が見えたらmain.goが更新されています</p>
 
 	<h2>ユーザー登録</h2>
 	<form action="/add" method="POST">
