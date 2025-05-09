@@ -23,7 +23,6 @@ func connectToDB() *sql.DB {
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
 
-	// 環境変数の表示用HTML作成
 	envDetails = fmt.Sprintf(`
 		<tr><td>DB_HOST</td><td>%s</td></tr>
 		<tr><td>DB_PORT</td><td>%s</td></tr>
@@ -81,6 +80,28 @@ func main() {
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	// ユーザー一覧取得
+	userRows := ""
+	if db != nil {
+		rows, err := db.Query("SELECT id, name, email, created_at FROM users ORDER BY id")
+		if err != nil {
+			log.Printf("❌ ユーザー一覧取得失敗: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				var name, email string
+				var createdAt string
+				if err := rows.Scan(&id, &name, &email, &createdAt); err == nil {
+					userRows += fmt.Sprintf(
+						"<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+						id, name, email, createdAt)
+				}
+			}
+		}
+	}
+
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="ja">
 <head><meta charset="UTF-8"><title>Goサーバー</title></head>
@@ -100,8 +121,15 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	<form action="/delete" method="POST">
 		<button type="submit" onclick="return confirm('本当に全削除してよろしいですか？');">削除</button>
 	</form>
+
+	<h2>登録済みユーザー一覧</h2>
+	<table border="1" cellpadding="5">
+		<tr><th>ID</th><th>名前</th><th>Email</th><th>作成日時</th></tr>
+		%s
+	</table>
 </body>
-</html>`, os.Getenv("PORT"), dbStatus)
+</html>`, os.Getenv("PORT"), dbStatus, userRows)
+
 	fmt.Fprint(w, html)
 }
 
