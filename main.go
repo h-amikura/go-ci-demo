@@ -54,6 +54,11 @@ func connectToDB() *sql.DB {
 	return d
 }
 
+// Hello関数（テスト用）
+func Hello() string {
+	return "Hello, CI!"
+}
+
 func main() {
 	db = connectToDB()
 	if db != nil {
