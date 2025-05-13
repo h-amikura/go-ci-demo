@@ -93,13 +93,11 @@ func main() {
 	}
 	verifier = provider.Verifier(&oidc.Config{ClientID: clientID})
 
-	// 認証必須ルート
 	http.HandleFunc("/", requireLogin(handleRoot))
 	http.HandleFunc("/env", requireLogin(handleEnv))
 	http.HandleFunc("/add", requireLogin(handleAdd))
 	http.HandleFunc("/delete", requireLogin(handleDelete))
 
-	// 認証ルート
 	http.HandleFunc("/login", handleLogin)
 	http.HandleFunc("/auth/callback", handleCallback)
 	http.HandleFunc("/logout", handleLogout)
@@ -201,11 +199,13 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "IDトークン取得失敗", http.StatusInternalServerError)
 		return
 	}
-	idToken, err := verifier.Verify(ctx, rawIDToken)
+	idToken, err := verifier.Verify(context.Background(), rawIDToken)
 	if err != nil {
 		http.Error(w, "IDトークン検証失敗", http.StatusInternalServerError)
 		return
 	}
+	_ = idToken // ← これがビルドエラー防止のための「使ったこと」にあたります
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "id_token",
 		Value:    rawIDToken,
