@@ -98,7 +98,7 @@ func main() {
 	http.HandleFunc("/add", requireLogin(handleAdd))
 	http.HandleFunc("/delete", requireLogin(handleDelete))
 
-	http.HandleFunc("/login", handleLogin)
+	http.HandleFunc("/login", handleLogin)           // ← 差し替え済み
 	http.HandleFunc("/auth/callback", handleCallback)
 	http.HandleFunc("/logout", handleLogout)
 
@@ -109,6 +109,7 @@ func main() {
 	log.Printf(">>> ポート%sでサーバー起動中...", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
+
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
 	user := getUserEmailFromToken(r)
@@ -226,8 +227,11 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, oauth2Config.AuthCodeURL("state"), http.StatusFound)
+	authURL := oauth2Config.AuthCodeURL("state")
+	log.Println("🔄 リダイレクト先URL:", authURL) // ← 追加：リダイレクト先のログを出力
+	http.Redirect(w, r, authURL, http.StatusFound)
 }
+
 
 func handleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
