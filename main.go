@@ -7,22 +7,23 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	_ "github.com/lib/pq"
-	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
 )
 
 var (
-	db             *sql.DB
-	dbStatus       = "❌ DB接続失敗"
-	envDetails     = ""
-	clientID       = os.Getenv("AZURE_CLIENT_ID")
-	clientSecret   = os.Getenv("AZURE_CLIENT_SECRET")
-	redirectURL    = os.Getenv("AZURE_REDIRECT_URL")
-	tenantID       = os.Getenv("AZURE_TENANT_ID")
-	oauth2Config   *oauth2.Config
-	verifier       *oidc.IDTokenVerifier
+	db           *sql.DB
+	dbStatus     = "❌ DB接続失敗"
+	envDetails   = ""
+	clientID     = os.Getenv("AZURE_CLIENT_ID")
+	clientSecret = os.Getenv("AZURE_CLIENT_SECRET")
+	redirectURL  = os.Getenv("AZURE_REDIRECT_URL")
+	tenantID     = os.Getenv("AZURE_TENANT_ID")
+	oauth2Config *oauth2.Config
+	verifier     *oidc.IDTokenVerifier
 )
 
 func connectToDB() *sql.DB {
@@ -33,13 +34,11 @@ func connectToDB() *sql.DB {
 	dbname := os.Getenv("DB_NAME")
 
 	envDetails = fmt.Sprintf(`
-		<tr><td>DB_HOST</td><td>%s</td></tr>
-		<tr><td>DB_PORT</td><td>%s</td></tr>
-		<tr><td>DB_USER</td><td>%s</td></tr>
-		<tr><td>DB_PASSWORD</td><td>%s</td></tr>
-		<tr><td>DB_NAME</td><td>%s</td></tr>`,
-		host, port, user, password, dbname,
-	)
+	<tr><td>DB_HOST</td><td>%s</td></tr>
+	<tr><td>DB_PORT</td><td>%s</td></tr>
+	<tr><td>DB_USER</td><td>%s</td></tr>
+	<tr><td>DB_PASSWORD</td><td>%s</td></tr>
+	<tr><td>DB_NAME</td><td>%s</td></tr>`, host, port, user, password, dbname)
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		host, port, user, password, dbname)
@@ -53,9 +52,25 @@ func connectToDB() *sql.DB {
 		log.Printf("❌ db.Ping エラー: %v", err)
 		return nil
 	}
-
 	dbStatus = "✅ DB接続成功"
 	return conn
+}
+
+func requireLogin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("id_token")
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		ctx := context.Background()
+		_, err = verifier.Verify(ctx, cookie.Value)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func main() {
@@ -78,12 +93,16 @@ func main() {
 	}
 	verifier = provider.Verifier(&oidc.Config{ClientID: clientID})
 
-	http.HandleFunc("/", handleRoot)
-	http.HandleFunc("/env", handleEnv)
-	http.HandleFunc("/add", handleAdd)
-	http.HandleFunc("/delete", handleDelete)
+	// 認証必須ルート
+	http.HandleFunc("/", requireLogin(handleRoot))
+	http.HandleFunc("/env", requireLogin(handleEnv))
+	http.HandleFunc("/add", requireLogin(handleAdd))
+	http.HandleFunc("/delete", requireLogin(handleDelete))
+
+	// 認証ルート
 	http.HandleFunc("/login", handleLogin)
 	http.HandleFunc("/auth/callback", handleCallback)
+	http.HandleFunc("/logout", handleLogout)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -94,11 +113,7 @@ func main() {
 }
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
-	user := r.URL.Query().Get("user")
-	if user == "" {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
+	user := getUserEmailFromToken(r)
 	userRows := ""
 	if db != nil {
 		rows, err := db.Query("SELECT id, name, email, created_at FROM users ORDER BY id")
@@ -121,6 +136,7 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	<p><strong>ログインユーザー:</strong> %s</p>
 	<p><strong>DB接続状態:</strong> %s</p>
 	<p><a href="/env">▶ 環境変数を確認</a></p>
+	<p><a href="/logout">🚪 ログアウト</a></p>
 	<h2>ユーザー登録</h2><form action="/add" method="POST">
 	<p>名前: <input type="text" name="name" required></p>
 	<p>Email: <input type="email" name="email" required></p>
@@ -190,16 +206,45 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "IDトークン検証失敗", http.StatusInternalServerError)
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "id_token",
+		Value:    rawIDToken,
+		Path:     "/",
+		Expires:  time.Now().Add(1 * time.Hour),
+		HttpOnly: true,
+	})
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   "id_token",
+		MaxAge: -1,
+		Path:   "/",
+	})
+	http.Redirect(w, r,
+		"https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri="+redirectURL,
+		http.StatusSeeOther)
+}
+
+func getUserEmailFromToken(r *http.Request) string {
+	cookie, err := r.Cookie("id_token")
+	if err != nil {
+		return "未取得"
+	}
+	ctx := context.Background()
+	idToken, err := verifier.Verify(ctx, cookie.Value)
+	if err != nil {
+		return "検証失敗"
+	}
 	var claims struct {
 		Email string `json:"email"`
 	}
-	if err := idToken.Claims(&claims); err != nil {
-		http.Error(w, "クレームパース失敗", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/?user="+claims.Email, http.StatusSeeOther)
+	_ = idToken.Claims(&claims)
+	return claims.Email
 }
-// Hello関数（テスト用）
+
+// テスト用関数
 func Hello() string {
 	return "Hello, CI!"
 }
