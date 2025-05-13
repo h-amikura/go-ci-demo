@@ -129,21 +129,63 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	html := fmt.Sprintf(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>Goサーバー</title></head><body>
-	<h1>Goアプリ稼働中</h1>
-	<p><strong>ログインユーザー:</strong> %s</p>
-	<p><strong>DB接続状態:</strong> %s</p>
-	<p><a href="/env">▶ 環境変数を確認</a></p>
-	<p><a href="/logout">🚪 ログアウト</a></p>
-	<h2>ユーザー登録</h2><form action="/add" method="POST">
-	<p>名前: <input type="text" name="name" required></p>
-	<p>Email: <input type="email" name="email" required></p>
-	<button type="submit">登録</button></form>
-	<h2>全ユーザー削除</h2><form action="/delete" method="POST">
-	<button type="submit" onclick="return confirm('本当に削除？');">削除</button></form>
-	<h2>ユーザー一覧</h2><table border="1" cellpadding="5">
-	<tr><th>ID</th><th>名前</th><th>Email</th><th>作成日時</th></tr>
-	%s</table></body></html>`, user, dbStatus, userRows)
+	html := fmt.Sprintf(`<!DOCTYPE html><html lang="ja"><head>
+	<meta charset="UTF-8">
+	<title>Goサーバー</title>
+	<style>
+		body { margin: 0; font-family: sans-serif; }
+		.header {
+			background-color: #0078D7;
+			color: white;
+			padding: 10px 20px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		.header .title {
+			font-size: 1.5em;
+			font-weight: bold;
+		}
+		.header .user {
+			font-size: 0.9em;
+		}
+		.container {
+			padding: 20px;
+		}
+	</style>
+</head><body>
+
+	<div class="header">
+		<div class="title">Go アプリケーション</div>
+		<div class="user">
+			%s さん | <a href="/logout" style="color: white; text-decoration: underline;">ログアウト</a>
+		</div>
+	</div>
+
+	<div class="container">
+		<p><strong>DB接続状態:</strong> %s</p>
+		<p><a href="/env">▶ 環境変数を確認</a></p>
+
+		<h2>ユーザー登録</h2>
+		<form action="/add" method="POST">
+			<p>名前: <input type="text" name="name" required></p>
+			<p>Email: <input type="email" name="email" required></p>
+			<button type="submit">登録</button>
+		</form>
+
+		<h2>全ユーザー削除</h2>
+		<form action="/delete" method="POST">
+			<button type="submit" onclick="return confirm('本当に削除？');">削除</button>
+		</form>
+
+		<h2>ユーザー一覧</h2>
+		<table border="1" cellpadding="5">
+			<tr><th>ID</th><th>名前</th><th>Email</th><th>作成日時</th></tr>
+			%s
+		</table>
+	</div>
+
+</body></html>`, user, dbStatus, userRows)
 	fmt.Fprint(w, html)
 }
 
@@ -199,12 +241,12 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "IDトークン取得失敗", http.StatusInternalServerError)
 		return
 	}
-	idToken, err := verifier.Verify(context.Background(), rawIDToken)
+	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		http.Error(w, "IDトークン検証失敗", http.StatusInternalServerError)
 		return
 	}
-	_ = idToken // ← これがビルドエラー防止のための「使ったこと」にあたります
+	_ = idToken // ← 使用済みにしてビルドエラー防止
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "id_token",
@@ -244,7 +286,7 @@ func getUserEmailFromToken(r *http.Request) string {
 	return claims.Email
 }
 
-// テスト用関数
+// テスト用
 func Hello() string {
 	return "Hello, CI!"
 }
