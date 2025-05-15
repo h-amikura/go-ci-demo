@@ -112,30 +112,51 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func handleRoot(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleRoot")
+	defer span.End()
+	span.AddEvent("handleRoot accessed")
 	fmt.Fprint(w, "Hello from handleRoot")
 }
 
 func handleEnv(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleEnv")
+	defer span.End()
+	span.AddEvent("handleEnv accessed")
 	fmt.Fprint(w, "Hello from handleEnv")
 }
 
 func handleAdd(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleAdd")
+	defer span.End()
+	span.AddEvent("handleAdd accessed")
 	fmt.Fprint(w, "Hello from handleAdd")
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleDelete")
+	defer span.End()
+	span.AddEvent("handleDelete accessed")
 	fmt.Fprint(w, "Hello from handleDelete")
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleLogin")
+	defer span.End()
+	span.AddEvent("handleLogin accessed")
 	fmt.Fprint(w, "Hello from handleLogin")
 }
 
 func handleCallback(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleCallback")
+	defer span.End()
+	span.AddEvent("handleCallback accessed")
 	fmt.Fprint(w, "Hello from handleCallback")
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("app").Start(r.Context(), "handleLogout")
+	defer span.End()
+	span.AddEvent("handleLogout accessed")
 	fmt.Fprint(w, "Hello from handleLogout")
 }
 
