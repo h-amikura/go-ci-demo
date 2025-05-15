@@ -111,6 +111,42 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func handleRoot(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleRoot")
+}
+
+func handleEnv(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleEnv")
+}
+
+func handleAdd(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleAdd")
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleDelete")
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleLogin")
+}
+
+func handleCallback(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleCallback")
+}
+
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello from handleLogout")
+}
+
+func getUserEmailFromToken(r *http.Request) string {
+	return "test@example.com"
+}
+
+func Hello() string {
+	return "Hello, CI!"
+}
+
 func main() {
 	ctx := context.Background()
 
