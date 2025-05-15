@@ -7,11 +7,16 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	_ "github.com/lib/pq"
 	"golang.org/x/oauth2"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 var (
@@ -25,6 +30,39 @@ var (
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
 )
+
+func initTracer() func() {
+	ctx := context.Background()
+	connStr := os.Getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+	if connStr == "" {
+		log.Println("⚠️ Application Insights接続文字列が未設定")
+		return func() {}
+	}
+
+	exporter, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpoint("japaneast-1.in.applicationinsights.azure.com"),
+		otlptracehttp.WithHeaders(map[string]string{
+			"Authorization": connStr,
+		}),
+	)
+	if err != nil {
+		log.Printf("❌ OTLPエクスポーター初期化失敗: %v", err)
+		return func() {}
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("mywebapp12345"),
+		)),
+	)
+	otel.SetTracerProvider(tp)
+	log.Println("✅ OpenTelemetry トレーサー初期化成功")
+	return func() {
+		_ = tp.Shutdown(ctx)
+	}
+}
 
 func connectToDB() *sql.DB {
 	host := os.Getenv("DB_HOST")
@@ -75,6 +113,10 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 
 func main() {
 	ctx := context.Background()
+
+	shutdown := initTracer()
+	defer shutdown()
+
 	db = connectToDB()
 	if db != nil {
 		defer db.Close()
@@ -97,8 +139,7 @@ func main() {
 	http.HandleFunc("/env", requireLogin(handleEnv))
 	http.HandleFunc("/add", requireLogin(handleAdd))
 	http.HandleFunc("/delete", requireLogin(handleDelete))
-
-	http.HandleFunc("/login", handleLogin)           // ← 差し替え済み
+	http.HandleFunc("/login", handleLogin)
 	http.HandleFunc("/auth/callback", handleCallback)
 	http.HandleFunc("/logout", handleLogout)
 
@@ -108,189 +149,4 @@ func main() {
 	}
 	log.Printf(">>> ポート%sでサーバー起動中...", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
-}
-
-
-func handleRoot(w http.ResponseWriter, r *http.Request) {
-	user := getUserEmailFromToken(r)
-	userRows := ""
-	if db != nil {
-		rows, err := db.Query("SELECT id, name, email, created_at FROM users ORDER BY id")
-		if err != nil {
-			log.Printf("❌ ユーザー一覧取得失敗: %v", err)
-		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				var name, email string
-				var createdAt string
-				if err := rows.Scan(&id, &name, &email, &createdAt); err == nil {
-					userRows += fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>", id, name, email, createdAt)
-				}
-			}
-		}
-	}
-	html := fmt.Sprintf(`<!DOCTYPE html><html lang="ja"><head>
-	<meta charset="UTF-8">
-	<title>Goサーバー</title>
-	<style>
-		body { margin: 0; font-family: sans-serif; }
-		.header {
-			background-color: #0078D7;
-			color: white;
-			padding: 10px 20px;
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-		}
-		.header .title {
-			font-size: 1.5em;
-			font-weight: bold;
-		}
-		.header .user {
-			font-size: 0.9em;
-		}
-		.container {
-			padding: 20px;
-		}
-	</style>
-</head><body>
-
-	<div class="header">
-		<div class="title">Go アプリケーション</div>
-		<div class="user">
-			%s さん | <a href="/logout" style="color: white; text-decoration: underline;">ログアウト</a>
-		</div>
-	</div>
-
-	<div class="container">
-		<p><strong>DB接続状態:</strong> %s</p>
-		<p><a href="/env">▶ 環境変数を確認</a></p>
-
-		<h2>ユーザー登録</h2>
-		<form action="/add" method="POST">
-			<p>名前: <input type="text" name="name" required></p>
-			<p>Email: <input type="email" name="email" required></p>
-			<button type="submit">登録</button>
-		</form>
-
-		<h2>全ユーザー削除</h2>
-		<form action="/delete" method="POST">
-			<button type="submit" onclick="return confirm('本当に削除？');">削除</button>
-		</form>
-
-		<h2>ユーザー一覧</h2>
-		<table border="1" cellpadding="5">
-			<tr><th>ID</th><th>名前</th><th>Email</th><th>作成日時</th></tr>
-			%s
-		</table>
-	</div>
-
-</body></html>`, user, dbStatus, userRows)
-	fmt.Fprint(w, html)
-}
-
-func handleEnv(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	html := fmt.Sprintf(`<h2>環境変数</h2><table border="1" cellpadding="5">
-	<tr><th>名前</th><th>値</th></tr>%s</table>
-	<p><a href="/">← トップに戻る</a></p>`, envDetails)
-	fmt.Fprint(w, html)
-}
-
-func handleAdd(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
-		name := r.FormValue("name")
-		email := r.FormValue("email")
-		if db != nil {
-			_, err := db.Exec("INSERT INTO users (name, email) VALUES ($1, $2)", name, email)
-			if err != nil {
-				log.Printf("❌ ユーザー登録失敗: %v", err)
-			} else {
-				log.Println("✅ ユーザー登録成功")
-			}
-		}
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func handleDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost && db != nil {
-		_, err := db.Exec("DELETE FROM users")
-		if err != nil {
-			log.Printf("❌ ユーザー削除失敗: %v", err)
-		} else {
-			log.Println("✅ 全ユーザー削除成功")
-		}
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	authURL := oauth2Config.AuthCodeURL("state")
-	log.Println("🔄 リダイレクト先URL:", authURL) // ← 追加：リダイレクト先のログを出力
-	http.Redirect(w, r, authURL, http.StatusFound)
-}
-
-
-func handleCallback(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
-	token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
-	if err != nil {
-		http.Error(w, "トークン交換エラー", http.StatusInternalServerError)
-		return
-	}
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		http.Error(w, "IDトークン取得失敗", http.StatusInternalServerError)
-		return
-	}
-	idToken, err := verifier.Verify(ctx, rawIDToken)
-	if err != nil {
-		http.Error(w, "IDトークン検証失敗", http.StatusInternalServerError)
-		return
-	}
-	_ = idToken // ← 使用済みにしてビルドエラー防止
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "id_token",
-		Value:    rawIDToken,
-		Path:     "/",
-		Expires:  time.Now().Add(1 * time.Hour),
-		HttpOnly: true,
-	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:   "id_token",
-		MaxAge: -1,
-		Path:   "/",
-	})
-	http.Redirect(w, r,
-		"https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri="+redirectURL,
-		http.StatusSeeOther)
-}
-
-func getUserEmailFromToken(r *http.Request) string {
-	cookie, err := r.Cookie("id_token")
-	if err != nil {
-		return "未取得"
-	}
-	ctx := context.Background()
-	idToken, err := verifier.Verify(ctx, cookie.Value)
-	if err != nil {
-		return "検証失敗"
-	}
-	var claims struct {
-		Email string `json:"email"`
-	}
-	_ = idToken.Claims(&claims)
-	return claims.Email
-}
-
-// テスト用
-func Hello() string {
-	return "Hello, CI!"
 }
